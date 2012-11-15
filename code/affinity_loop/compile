@@ -1,0 +1,20 @@
+#!/bin/bash
+
+input=$1
+output=$2
+
+if [ -z $1 ]; then
+	input=loops2.c
+fi
+
+if [ -z $2 ]; then
+	output=loops2
+fi
+
+rm $output &>/dev/null
+if [ $HOSTNAME == 'netbook' ]; then
+	g++ -fopenmp -O3 -o $output $input
+	echo "Compilation for host '$HOSTNAME' complete"
+else
+	echo "Compilation for host '$HOSTNAME' failed: did not recognise hostname"
+fi
