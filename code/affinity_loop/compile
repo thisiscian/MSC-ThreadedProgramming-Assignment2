@@ -4,11 +4,11 @@ input=$1
 output=$2
 
 if [ -z $1 ]; then
-	input=loops2.c
+	input=src/loops2.c
 fi
 
 if [ -z $2 ]; then
-	output=loops2
+	output=bin/loops2
 fi
 
 rm $output &>/dev/null

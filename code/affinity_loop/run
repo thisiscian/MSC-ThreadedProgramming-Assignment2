@@ -1,9 +1,12 @@
-#!/bin/bash
-input=loops2.c
-program=loops2
-num_threads=1
-
+#/bin/bash
+input=src/loops2.c
+program=bin/loops2
+num_threads=2
 
 ./compile $input $output
-export OMP_NUM_THREADS=$num_threads
-./$program
+if [ -a $output ]; then
+	export OMP_NUM_THREADS=$num_threads
+	./$program
+else
+	echo "File: '$output' not found, exitting..."
+fi

@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <math.h>
 
-
 #define N 729
 #define reps 100 
 #include <omp.h> 
@@ -91,20 +90,83 @@ void init2(void){
 
 
 void runloop(int loopid)  {
-
-#pragma omp parallel default(none) shared(loopid) 
+		int local_iterations_remaining[omp_get_num_threads()];
+#pragma omp parallel default(none) shared(loopid, local_iterations_remaining) 
   {
+		omp_lock_t writelock;
+		omp_init_lock(&writelock);
+		//initialise the loop
     int myid  = omp_get_thread_num();
     int nthreads = omp_get_num_threads(); 
-    int ipt = (int) ceil((double)N/(double)nthreads); 
-    int lo = myid*ipt;
-    int hi = (myid+1)*ipt;
-    if (hi > N) hi = N; 
-  
-    switch (loopid) { 
-       case 1: loop1chunk(lo,hi); break;
-       case 2: loop2chunk(lo,hi); break;
-    } 
+		
+		int working_on_thread = myid; // variable which indicates which segment the thread is working on
+    
+		int ipt = (int) ceil((double)N/(double)nthreads);
+		int current_work_segment = myid;
+   	int lo = current_work_segment*ipt;
+   	int hi = (current_work_segment+1)*ipt;
+   	if (hi > N) hi = N;
+
+		while(1)
+		{
+			if(omp_test_lock(&writelock))
+			{
+				local_iterations_remaining[current_work_segment] = hi-lo;	// number of iterations remaining
+				omp_unset_lock(&writelock);
+				break;
+			}
+		}	
+		
+		while(1)
+		{
+			hi = (current_work_segment+1)*ipt;
+			if(hi > N) hi = N;
+			while(1)
+			{
+				if(omp_test_lock(&writelock))
+				{
+					if(local_iterations_remaining[current_work_segment] <= 0)
+					{
+						omp_unset_lock(&writelock);
+						break;
+					}
+					// split up the work per processor working
+					int iterations_to_do = local_iterations_remaining[current_work_segment]/nthreads;
+					if(iterations_to_do < 1) iterations_to_do = 1;
+					int my_lo = hi-local_iterations_remaining[current_work_segment];
+					int my_hi = iterations_to_do+my_lo;
+					local_iterations_remaining[current_work_segment] -= iterations_to_do;
+					if(local_iterations_remaining[current_work_segment] < 0) local_iterations_remaining[current_work_segment] = 0;
+					omp_unset_lock(&writelock);
+					
+		  	 	switch (loopid)
+					{ 
+	   		    case 1: loop1chunk(my_lo,my_hi); break;
+	   		    case 2: loop2chunk(my_lo,my_hi); break;
+	   			} 
+		 		}
+			}
+			int old_work_segment = current_work_segment;
+			while(1)
+			{
+				if(omp_test_lock(&writelock))
+				{
+					for(int i=0; i<nthreads; i++)
+					{
+						if(local_iterations_remaining[i] > local_iterations_remaining[current_work_segment])
+						{
+							current_work_segment = i;
+						}
+					}
+					omp_unset_lock(&writelock);
+					break;
+				}	
+			}
+			if(old_work_segment == current_work_segment)
+			{
+				break;
+			}
+		}
   }
 }
 
