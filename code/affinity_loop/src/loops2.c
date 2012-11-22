@@ -92,32 +92,37 @@ void init2(void){
 
 
 void runloop(int loopid)  {
-	int global_work_remaining[omp_get_num_threads()];
-#pragma omp parallel default(none) shared(global_work_remaining, loopid) 
+	setbuf(stdout, NULL);
+	int* global_work_remaining;
+#pragma omp parallel default(none) shared(global_work_remaining, loopid, a, b, c) 
   {
     int my_id  = omp_get_thread_num();
     int nthreads = omp_get_num_threads(); 
     int ipt = (int) ceil((double)N/(double)nthreads); 
 		int segment_id = my_id;
     int segment_lo = segment_id*ipt;
-    int segment_hi = (segment_id+1)*ipt;
+   	int segment_hi = (segment_id+1)*ipt;
     if (segment_hi > N) segment_hi = N;
 		int segment_range = segment_hi-segment_lo;
-//		printf("segment %d: from %d to %d\n", segment_id, segment_lo, segment_hi);
 		int i;
+		#pragma omp single
+		{
+			global_work_remaining = malloc(nthreads*sizeof(int));
+		}
 		#pragma omp critical
 		{
 			global_work_remaining[my_id] = segment_range;
 		}
+		#pragma omp barrier
 		int local_lo, local_hi, local_work;
 		int finished = 0;
-		while(!finished)
+		while(finished == 0)
 		{
 			#pragma omp critical
 			{
-				int old_id = segment_id;
 				if(global_work_remaining[segment_id] == 0)
 				{
+					int old_id = segment_id;
 					for(i=0; i<nthreads; i++)
 					{
 						if(global_work_remaining[segment_id] < global_work_remaining[i])
@@ -125,14 +130,13 @@ void runloop(int loopid)  {
 							segment_id = i;
 						}
 					}
-					if(old_id == segment_id || nthreads == 1)
+					if(old_id == segment_id)
 					{
 						finished = 1;
+						segment_range = 0;
 					}
 					else
 					{
-					//	printf("%d: switched from segment %d to %d\n", my_id, old_id, segment_id);
-				    segment_lo = segment_id*ipt;
 				    segment_hi = (segment_id+1)*ipt;
   				  if (segment_hi > N) segment_hi = N;
 						segment_range = global_work_remaining[segment_id];
@@ -142,17 +146,14 @@ void runloop(int loopid)  {
 				{
 					segment_range = global_work_remaining[segment_id];
 				}
-				local_work = segment_range/nthreads;
+				local_work = floor((double)segment_range/(double)nthreads);
 				if(local_work < 1 && finished == 0) local_work = 1;
 				global_work_remaining[segment_id] -= local_work;
-//				printf("work left%d = from %d - %d\n", segment_id, segment_hi-segment_range+local_work, segment_hi);
-				
 			}
 			if(finished == 0)
 			{
 				local_lo = segment_hi - segment_range;
 				local_hi = local_lo +	local_work;
-				//printf("%d to %d\n", local_lo, local_hi);
 	    	switch (loopid) { 
 	    	   case 1: loop1chunk(local_lo,local_hi); break;
 	    	   case 2: loop2chunk(local_lo,local_hi); break;
