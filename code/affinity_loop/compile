@@ -13,8 +13,9 @@ fi
 
 rm $output &>/dev/null
 if [ $HOSTNAME == 'netbook' ]; then
-	g++ -fopenmp -O3 -o $output $input
+	gcc -fopenmp -lm -O3 -o $output $input
 	echo "Compilation for host '$HOSTNAME' complete"
 else
-	echo "Compilation for host '$HOSTNAME' failed: did not recognise hostname"
+	gcc -fopenmp -lm -O3 -o $output $input
+	#pgcc -mp -lm -O3 -o $output $input
 fi

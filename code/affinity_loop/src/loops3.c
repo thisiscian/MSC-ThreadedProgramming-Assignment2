@@ -90,81 +90,79 @@ void init2(void){
 } 
 
 
-void runloop(int loopid)
-{
-	int local_iterations_remaining[omp_get_num_threads()];
-	#pragma omp parallel default(none) shared(loopid, local_iterations_remaining) 
-	{
-		int i, my_lo, my_hi, iterations_to_do;
-		omp_lock_t writelock;
-		omp_init_lock(&writelock);
-		int myid  = omp_get_thread_num();
-  	int nthreads = omp_get_num_threads(); 
-  	  
+void runloop(int loopid)  {
+int local_iterations_remaining[omp_get_num_threads()];
+#pragma omp parallel default(none) shared(loopid, local_iterations_remaining) 
+  {
+		int my_lo, my_hi, iterations_to_do;
+		int i;
+    int myid  = omp_get_thread_num();
+    int nthreads = omp_get_num_threads(); 
+		
+		int working_on_thread = myid; // variable which indicates which segment the thread is working on
+    
 		int ipt = (int) ceil((double)N/(double)nthreads);
 		int current_work_segment = myid;
 		int lo, hi;
 		#pragma omp single
 		{
-			for(i=0; i<nthreads; i++)
+			for(i=0; i<nthreads;i++)
 			{
 				lo = i*ipt;
  				hi = (i+1)*ipt;
-  			if (hi > N) hi = N;
+   			if (hi > N) hi = N;
 				local_iterations_remaining[i] = hi-lo;	// number of iterations remaining
+				#pragma omp flush
 			}
 		}
- 		hi = (current_work_segment+1)*ipt;
-  	if (hi > N) hi = N;
+   	hi = (current_work_segment+1)*ipt;
+   	if (hi > N) hi = N;
+		#pragma omp barrier
+		#pragma omp critical
+		{
+			printf("%d: ", myid);
+			for(i=0;i<nthreads;i++)
+			{
+				printf("%d ", local_iterations_remaining[i]);
+			}
+			printf("\n");
+		}
+		#pragma omp barrier
 		while(1)
 		{
 			int old_work_segment = current_work_segment;
-			omp_set_lock(&writelock);
-			printf("\t\tI AM WRITING NOW: %d\n", myid);
-			if(local_iterations_remaining[current_work_segment] <= 0)
+			#pragma omp critical
 			{
-				for(i=0; i<nthreads; i++)
+				if(local_iterations_remaining[current_work_segment] == 0)
 				{
-					if(local_iterations_remaining[i] > local_iterations_remaining[current_work_segment])
+					for(i=0; i<nthreads; i++)
 					{
-						current_work_segment = i;
+						if(local_iterations_remaining[i] > local_iterations_remaining[current_work_segment])
+						{
+							current_work_segment = i;
+						}
 					}
+					hi = (current_work_segment+1)*ipt;
+					if(hi > N) hi = N;
 				}
-				if(old_work_segment == current_work_segment)
+				if(old_work_segment != current_work_segment)	
 				{
-					printf("\t%d is out of work (%d)\n", myid, local_iterations_remaining[current_work_segment]);
-					omp_unset_lock(&writelock);
-					break;
-				}
-				printf("\t%d is now working in segment %d\n", myid, current_work_segment);
-				hi = (current_work_segment+1)*ipt;
-				if(hi > N) hi = N;
-				omp_unset_lock(&writelock);
-				printf("\t\tI AM STOPPED NOW: %d\n", myid);
-			}
-			else if(local_iterations_remaining[current_work_segment] > 0)
-			{
-				iterations_to_do = local_iterations_remaining[current_work_segment]/nthreads;
-				if(iterations_to_do < 1) iterations_to_do = 1;
-				my_lo = hi-local_iterations_remaining[current_work_segment];
-				my_hi = iterations_to_do+my_lo;
-				#pragma omp atomic
+					iterations_to_do = local_iterations_remaining[current_work_segment]/nthreads;
+					if(iterations_to_do < 1) iterations_to_do = 1;
+					my_lo = hi-local_iterations_remaining[current_work_segment];
+					my_hi = iterations_to_do+my_lo;
 					local_iterations_remaining[current_work_segment] -= iterations_to_do;
-				if(local_iterations_remaining[current_work_segment] < 0)
-				{
-					printf("something is very amiss here: %d \n", local_iterations_remaining[current_work_segment]); 
-				}
-	
-				omp_unset_lock(&writelock);
-				printf("\t\tI AM STOPPED NOW: %d\n", myid);
-		 		switch (loopid)
-				{ 
-	  		  case 1: loop1chunk(my_lo,my_hi); break;
-	  		  case 2: loop2chunk(my_lo,my_hi); break;
-	  		}
+					if(local_iterations_remaining[current_work_segment] < 0) local_iterations_remaining[current_work_segment] = 0;
+				}	
 			}
+			if(old_work_segment == current_work_segment) break;
+			switch (loopid)
+			{ 
+	  	  case 1: loop1chunk(my_lo,my_hi); break;
+	  	  case 2: loop2chunk(my_lo,my_hi); break;
+	  	}
 		}
-		printf("%d at barrier\n", myid);
+		#pragma omp barrier
   }
 }
 

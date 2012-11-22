@@ -1,12 +1,18 @@
 #/bin/bash
-input=src/loops2.c
+#$ -pe omp 64 -N tp_loops2 -cwd -V -e output/error/$JOB_NAME-$JOB_ID -o output/$JOB_NAME-$JOB_ID 
+input=src/loops3.c
 program=bin/loops2
-num_threads=2
+num_threads=1
 
-./compile $input $output
-if [ -a $output ]; then
-	export OMP_NUM_THREADS=$num_threads
-	./$program
+if [[ x$1x == xCOMx ]]; then
+	./compile $input $output
+	for num_threads in 16 12; do
+	#for num_threads in 16 12 8 6 4 2 1; do
+		export OMP_NUM_THREADS=$num_threads
+		echo "num_threads = $num_threads"
+		./$program
+		echo ""
+	done 
 else
-	echo "File: '$output' not found, exitting..."
+	qsub $0 COM
 fi
