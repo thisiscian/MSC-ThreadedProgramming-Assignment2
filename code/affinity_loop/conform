@@ -1,0 +1,7 @@
+if [ -z $1 ]; then
+	echo "Usage is $0 file_name"
+elif [ -e $1 ]; then
+	echo -e "#threads\tsum1\ttime1\tsum2\ttime2" && awk '{i = i + 1;} /num_threads/{printf $3 "\t";} /time/{printf $10 "\t";} /Loop/{printf $8 "\t";} {if(i%6==0) printf "\n";}' $1
+else
+	echo "$1 does not exist/is not readable"
+fi

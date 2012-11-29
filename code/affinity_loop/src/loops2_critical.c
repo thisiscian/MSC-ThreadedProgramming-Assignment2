@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <math.h>
-#include <stdlib.h>
+
 
 #define N 729
 #define reps 100
@@ -16,19 +16,9 @@ void loop1chunk(int, int);
 void loop2chunk(int, int);
 void valid1(void);
 void valid2(void);
-int *loop_time;
-int *waiting_time;
 
 int main(int argc, char *argv[]) { 
 
-	loop_time = malloc(omp_get_max_threads()*sizeof(int));
-	waiting_time = malloc(omp_get_max_threads()*sizeof(int));
-	int i;
-	for(i=0; i<omp_get_max_threads(); i++)
-	{
-		loop_time[i] = 0;
-		waiting_time[i] = 0;
-	}
   double start1,start2,end1,end2;
   int r;
 
@@ -45,13 +35,7 @@ int main(int argc, char *argv[]) {
   valid1(); 
 
   printf("Total time for %d reps of loop 1 = %f\n",reps, (float)(end1-start1)); 
-	printf("#thread\ttime thread spent working\n");
-	for(i=0;i<omp_get_max_threads(); i++)
-	{
-		printf("\t%d\t%d\t%d\n", i, loop_time[i], waiting_time[i]);
-		loop_time[i] = 0;
-		waiting_time[i] = 0;
-	}
+
 
   init2(); 
 
@@ -67,11 +51,6 @@ int main(int argc, char *argv[]) {
 
   printf("Total time for %d reps of loop 2 = %f\n",reps, (float)(end2-start2)); 
 
-	printf("#thread\ttime thread spent working\n");
-	for(i=0;i<omp_get_max_threads(); i++)
-	{
-		printf("\t%d\t%d\t%d\n", i, loop_time[i], waiting_time[i]);
-	}
 } 
 
 void init1(void){
@@ -110,19 +89,15 @@ void init2(void){
 
 
 void runloop(int loopid)  {
-
 	int global_work_remaining[omp_get_max_threads()];
-	omp_lock_t writelock;
-	omp_init_lock(&writelock);
-	#pragma omp parallel default(none) shared(global_work_remaining, writelock, loopid, waiting_time, loop_time,a, b, c) 
+	#pragma omp parallel default(none) shared(global_work_remaining, loopid, a, b, c) 
   {
 		int i;
-		int start_time, stop_time;
 
     int my_id  = omp_get_thread_num();
     int nthreads = omp_get_num_threads(); 
     int ipt = (int) ceil((double)N/(double)nthreads); 
-
+		
 		/* there should be as many chunks as there are threads
 		 * and they should have roughly identical ranges		*/			
 		int chunk_id = my_id;
@@ -139,50 +114,64 @@ void runloop(int loopid)  {
 		global_work_remaining[my_id] = chunk_range;
 		#pragma omp barrier
 
+		/* because you can't immediately break in a critical section
+		 * a flag is needed to indicate to break immediately after */
+		int finished = 0;
+
 		/* continue to do work unless there is no work left to do */
 		while(1)
 		{
-			start_time = omp_get_wtime();
-			omp_set_lock(&writelock);
-			if(global_work_remaining[chunk_id] == 0)
+
+			#pragma omp critical
 			{
-				int old_id = chunk_id;
-				for(i=0; i<nthreads; i++)
+				/* if the thread has no work left, look for more work */
+				if(global_work_remaining[chunk_id] == 0)
 				{
-					if(global_work_remaining[chunk_id] < global_work_remaining[i])
+					int old_id = chunk_id;
+					/* loop over all array elements to see who is most loaded */
+					for(i=0; i<nthreads; i++)
 					{
-						chunk_id = i;
+						if(global_work_remaining[chunk_id] < global_work_remaining[i])
+						{
+							chunk_id = i;
+						}
 					}
-				}
-				if(old_id == chunk_id)
-				{
-					omp_unset_lock(&writelock);
-					break;
+					/* if no job has more work to do than the current thread,
+					 * and the current thread has no work, then there is no work
+					 * left, so break out of the while loop and finish the function */
+					if(old_id == chunk_id)
+					{
+						finished = 1; // raise flag to indicate to break
+						chunk_range = 0; //ensure shared array is unchanged
+					}
+					/* otherwise, update your chunk values, and do some work */
+					else
+					{
+				    chunk_hi = (chunk_id+1)*ipt;
+  				  if (chunk_hi > N) chunk_hi = N;
+						chunk_range = global_work_remaining[chunk_id];
+					}
 				}
 				else
 				{
-			    chunk_hi = (chunk_id+1)*ipt;
-  			  if (chunk_hi > N) chunk_hi = N;
 					chunk_range = global_work_remaining[chunk_id];
 				}
+				/* local work to do is a fraction of the chunk size
+ 				 * thread should do at least 1 iteration, however	*/
+				local_work = floor((double)chunk_range/(double)nthreads);
+				if(local_work < 1 && finished == 0) local_work = 1;
+				global_work_remaining[chunk_id] -= local_work;
 			}
-			else
-			{
-				chunk_range = global_work_remaining[chunk_id];
-			}
-			local_work = floor((double)chunk_range/(double)nthreads);
-			if(local_work < 1) local_work = 1;
-			global_work_remaining[chunk_id] -= local_work;
-			omp_unset_lock(&writelock);
+			/* all interactions with the shared array are over
+			 * if there is no more work, leave the while loop,
+			 * otherwise start working on the loop */
+			if(finished == 1) break;
 			local_lo = chunk_hi - chunk_range;
 			local_hi = local_lo +	local_work;
-			waiting_time[my_id] += omp_get_wtime() - start_time;
-			start_time = omp_get_wtime();
-	    switch (loopid) { 
-	       case 1: loop1chunk(local_lo,local_hi); break;
-	       case 2: loop2chunk(local_lo,local_hi); break;
-	    } 
-			loop_time[my_id] += omp_get_wtime() -start_time;
+	   	switch (loopid) { 
+	   	   case 1: loop1chunk(local_lo,local_hi); break;
+	   	   case 2: loop2chunk(local_lo,local_hi); break;
+	   	} 
 		}
   }
 }

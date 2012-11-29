@@ -1,0 +1,21 @@
+#!/bin/bash
+
+input=$1
+output=$2
+
+if [ -z $1 ]; then
+	input=src/loops2.c
+fi
+
+if [ -z $2 ]; then
+	output=bin/loops2
+fi
+
+rm $output &>/dev/null
+if [ $HOSTNAME == 'netbook' ]; then
+	g++ -fopenmp -O3 -o $output $input
+	echo "Compilation for host '$HOSTNAME' complete"
+else
+	pgcc -mp -lm -O3 -o $output $input
+	echo "Compilation for host '$HOSTNAME' complete"
+fi

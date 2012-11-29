@@ -1,5 +1,5 @@
 #/bin/bash
-#$ -pe omp 16 -N tp_loops2 -cwd -V -e output/error/$JOB_NAME-$JOB_ID -o output/$JOB_NAME-$JOB_ID 
+#$ -pe omp 64 -N tp_loops2 -cwd -V -e output/error/$JOB_NAME-$JOB_ID -o output/$JOB_NAME-$JOB_ID 
 input=src/loops2.c
 program=bin/loops2
 num_threads=2
@@ -8,14 +8,14 @@ if [ $HOSTNAME == 'netbook' ]; then
 	export OMP_NUM_THREADS=$num_threads
 	./$program
 else
-
 	if [[ x$1x == xCOMx ]]; then
-		#for num_threads in 2; do
+		echo -e "#this is testing the ratio of loop to waiting"
+		echo -e "#nthreads\tsum1\ttime1\tsum2\ttime2"
 		for num_threads in 16 12 8 6 4 2 1; do
 			./compile $input $program
 			export OMP_NUM_THREADS=$num_threads
-			echo "num_threads = $num_threads"
-			./$program
+			printf "num_threads = $num_threads\n#############"&& ./$program #| awk '{i = i + 1;} /num_threads/{printf " " $3 "\t";} /time/{printf $10 "\t";} /Loop/{printf $8 "\t";} {if(i%6==0)print;}'
+			echo ""
 			echo ""
 		done 
 	else

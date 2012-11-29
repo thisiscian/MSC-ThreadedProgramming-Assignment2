@@ -1,0 +1,2 @@
+#!/bin/bash
+awk '/^[^#]/{ if( $2 != -34302.147477) print "#threads=" $1 " failed loop1 test"} /^[^#]/{if($4 != -2524264.460320) print "#threads=" $1 " failed loop2 test"}' $1
